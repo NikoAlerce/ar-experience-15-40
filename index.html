@@ -22,6 +22,28 @@
             position: relative;
         }
         
+        /* Botón de inicio para móviles */
+        .start-button {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #007AFF;
+            color: white;
+            padding: 20px 40px;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1001;
+            box-shadow: 0 4px 20px rgba(0, 122, 255, 0.3);
+        }
+        
+        .start-button:hover {
+            background: #0056CC;
+        }
+        
         /* Instrucciones simples */
         .instructions {
             position: fixed;
@@ -36,6 +58,7 @@
             z-index: 1000;
             font-size: 16px;
             backdrop-filter: blur(10px);
+            display: none;
         }
         
         /* Debug info opcional */
@@ -55,65 +78,33 @@
             z-index: 1000;
         }
         
-        /* Forzar que todos los videos sean visibles */
-        video {
-            display: block !important;
-            visibility: visible !important;
-        }
-        
-        /* Asegurar que A-Frame canvas sea visible */
-        a-scene canvas {
-            display: block !important;
-            visibility: visible !important;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-        }
-        
-        /* Video de respaldo para móviles */
-        #backup-camera {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            object-fit: cover !important;
-            z-index: -1 !important;
-        }
-        
         /* Responsive */
         @media (max-width: 480px) {
-            .loading-content h1 {
-                font-size: 20px;
-            }
-            
-            .loading-content p {
-                font-size: 14px;
-            }
-            
-            .camera-instructions {
-                left: 16px;
-                right: 16px;
-                top: 16px;
+            .start-button {
+                padding: 15px 30px;
+                font-size: 16px;
             }
         }
     </style>
 </head>
 <body>
+    <!-- Botón de inicio -->
+    <button class="start-button" id="startButton">
+        📱 Iniciar AR Experience
+    </button>
+    
     <!-- Instrucciones simples -->
     <div class="instructions" id="instructions">
         🎯 Apunta la cámara al marcador para ver <strong>15</strong>
     </div>
     
-    <!-- Debug info opcional - visible en móviles para diagnosticar -->
+    <!-- Debug info opcional -->
     <div class="debug-info" id="debugInfo">
-        Iniciando AR automáticamente...
+        Listo para iniciar AR...
     </div>
 
     <a-scene 
-        mindar-image="imageTargetSrc: ./target.mind; maxTrack: 1; uiLoading: no; uiScanning: no; autoStart: true; uiError: no;"
+        mindar-image="imageTargetSrc: ./target.mind; maxTrack: 1; uiLoading: no; uiScanning: no; autoStart: false; uiError: no;"
         embedded
         color-space="sRGB" 
         renderer="colorManagement: true, physicallyCorrectLights; antialias: true; alpha: true"
@@ -143,11 +134,12 @@
     </a-scene>
 
     <script>
-        // JavaScript optimizado para cámara funcionando en PC y móvil
         let instructions = document.getElementById('instructions');
         let debugInfo = document.getElementById('debugInfo');
+        let startButton = document.getElementById('startButton');
+        let arScene = document.querySelector('a-scene');
         let logs = [];
-        let cameraStream = null;
+        let arStarted = false;
 
         function log(message) {
             const time = new Date().toLocaleTimeString();
@@ -159,7 +151,44 @@
             }
         }
 
-        // Configurar eventos de tracking
+        // Detectar dispositivo
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        log(isMobile ? '📱 Dispositivo móvil detectado' : '💻 Dispositivo desktop detectado');
+
+        // Función para iniciar AR
+        async function startAR() {
+            if (arStarted) return;
+            
+            try {
+                log('🚀 Iniciando AR...');
+                startButton.style.display = 'none';
+                instructions.style.display = 'block';
+                
+                // Solicitar permisos de cámara explícitamente
+                await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: isMobile ? 'environment' : 'user' 
+                    } 
+                });
+                
+                log('✅ Permisos de cámara obtenidos');
+                
+                // Inicializar MindAR
+                const mindAR = arScene.systems['mindar-image'];
+                await mindAR.start();
+                
+                arStarted = true;
+                log('🎯 MindAR iniciado correctamente');
+                
+            } catch (error) {
+                log('❌ Error al iniciar AR: ' + error.message);
+                startButton.style.display = 'block';
+                startButton.textContent = '❌ Error - Reintentar';
+            }
+        }
+
+        // Eventos de tracking
         document.addEventListener('DOMContentLoaded', () => {
             const arContent = document.querySelector('#ar-content');
             
@@ -176,204 +205,18 @@
             });
         });
 
-        // Auto-detectar dispositivo para logs
-        const isAndroid = /Android/i.test(navigator.userAgent);
-        const isXiaomi = /Mi|Redmi|MIUI/i.test(navigator.userAgent);
-        const isDesktop = !('ontouchstart' in window) && !navigator.maxTouchPoints;
-        
-        if (isXiaomi) {
-            log('🔧 Xiaomi detectado - AR iniciando...');
-        } else if (isAndroid) {
-            log('📱 Android detectado - AR iniciando...');
-        } else if (isDesktop) {
-            log('💻 PC/Desktop detectado - AR iniciando...');
-        } else {
-            log('🌐 Dispositivo detectado - AR iniciando...');
-        }
-
-        // Función para asegurar que la cámara funcione en PC y móvil
-        async function ensureCameraWorking() {
-            try {
-                log('🔧 Aplicando fix de cámara universal...');
-                
-                // Esperar a que MindAR esté listo
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                // Configuración específica por dispositivo
-                let constraints;
-                if (isDesktop) {
-                    constraints = {
-                        video: {
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 },
-                            facingMode: 'user'
-                        },
-                        audio: false
-                    };
-                } else {
-                    // Configuración para móviles
-                    constraints = {
-                        video: {
-                            facingMode: { exact: 'environment' }, // Cámara trasera preferida
-                            width: { ideal: 640, max: 1280 },
-                            height: { ideal: 480, max: 720 }
-                        },
-                        audio: false
-                    };
-                }
-                
-                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-                log('✅ Stream de cámara obtenido');
-                
-                // Buscar el video de MindAR e inyectar nuestro stream
-                const findAndInjectVideo = () => {
-                    const videos = document.querySelectorAll('video');
-                    let mindARVideo = null;
-                    
-                    // Buscar video de MindAR de varias formas
-                    for (let video of videos) {
-                        if (video.getAttribute('data-mindar-video') || 
-                            video.parentElement?.tagName === 'A-SCENE' ||
-                            video.style.position === 'absolute' ||
-                            video.style.transform ||
-                            video.width > 100) {
-                            mindARVideo = video;
-                            break;
-                        }
-                    }
-                    
-                    if (mindARVideo && cameraStream) {
-                        mindARVideo.srcObject = cameraStream;
-                        mindARVideo.play();
-                        mindARVideo.style.display = 'block';
-                        mindARVideo.style.visibility = 'visible';
-                        log('✅ Stream inyectado en video MindAR');
-                        return true;
-                    }
-                    return false;
-                };
-                
-                // Si no encuentra video de MindAR, crear uno manual
-                const createBackupVideo = () => {
-                    if (!document.getElementById('backup-camera')) {
-                        const backupVideo = document.createElement('video');
-                        backupVideo.id = 'backup-camera';
-                        backupVideo.autoplay = true;
-                        backupVideo.playsinline = true;
-                        backupVideo.muted = true;
-                        backupVideo.srcObject = cameraStream;
-                        backupVideo.style.cssText = `
-                            position: fixed;
-                            top: 0;
-                            left: 0;
-                            width: 100vw;
-                            height: 100vh;
-                            object-fit: cover;
-                            z-index: -1;
-                        `;
-                        document.body.appendChild(backupVideo);
-                        log('📹 Video de respaldo creado');
-                        return true;
-                    }
-                    return false;
-                };
-                
-                // Intentar inyectar en MindAR varias veces
-                let attempts = 0;
-                const maxAttempts = 15;
-                const injectInterval = setInterval(() => {
-                    const injected = findAndInjectVideo();
-                    
-                    if (injected) {
-                        clearInterval(injectInterval);
-                        log('🎯 Cámara configurada con MindAR');
-                    } else if (attempts >= maxAttempts) {
-                        clearInterval(injectInterval);
-                        createBackupVideo();
-                        log('⚠️ Usando video de respaldo');
-                    }
-                    attempts++;
-                }, 800);
-                
-            } catch (error) {
-                log('❌ Error configurando cámara: ' + error.message);
-                
-                // Fallback: intentar con facingMode 'user' en móvil
-                if (!isDesktop && error.name === 'OverconstrainedError') {
-                    try {
-                        log('🔄 Reintentando con cámara frontal...');
-                        const fallbackConstraints = {
-                            video: {
-                                facingMode: 'user',
-                                width: { ideal: 640 },
-                                height: { ideal: 480 }
-                            },
-                            audio: false
-                        };
-                        cameraStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-                        log('✅ Cámara frontal obtenida como fallback');
-                    } catch (fallbackError) {
-                        log('❌ Error en fallback: ' + fallbackError.message);
-                    }
-                }
-            }
-        }
-
-        // Escuchar eventos de A-Frame y MindAR
-        window.addEventListener('load', () => {
-            log('🚀 Página cargada');
-            const arScene = document.querySelector('a-scene');
-            
-            arScene.addEventListener('loaded', () => {
-                log('✅ Escena A-Frame cargada');
-                // Aplicar fix de cámara después de que A-Frame esté listo
-                ensureCameraWorking();
-            });
-            
-            arScene.addEventListener('renderstart', () => {
-                log('📹 Renderer iniciado');
-            });
-            
-            // Eventos específicos de MindAR
-            arScene.addEventListener('arReady', () => {
-                log('🎯 MindAR listo');
-            });
-            
-            arScene.addEventListener('arError', (event) => {
-                log('❌ Error MindAR: ' + (event.detail ? event.detail.error : 'Error desconocido'));
-            });
-        });
-
-        // Monitorear el estado de la cámara con más detalle
-        let cameraCheckInterval = setInterval(() => {
-            const video = document.querySelector('video[data-mindar-video]') || 
-                         document.querySelector('canvas[data-mindar-canvas]') ||
-                         document.querySelector('a-scene video');
-            
-            if (video) {
-                if (video.srcObject && video.srcObject.active) {
-                    log('📹 Cámara activa en MindAR');
-                    clearInterval(cameraCheckInterval);
-                } else if (video.srcObject) {
-                    log('⚠️ MindAR tiene video pero sin stream activo');
-                }
-            }
-        }, 3000);
-
-        // Detener monitoreo después de 30 segundos
-        setTimeout(() => {
-            clearInterval(cameraCheckInterval);
-        }, 30000);
-
-        // Manejar errores
-        window.addEventListener('error', (event) => {
-            log('❌ Error: ' + event.message);
-        });
+        // Iniciar AR al hacer clic en el botón
+        startButton.addEventListener('click', startAR);
 
         // Prevenir zoom en móviles
         document.addEventListener('gesturestart', e => e.preventDefault());
         document.addEventListener('gesturechange', e => e.preventDefault());
         document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+        // Manejar errores
+        window.addEventListener('error', (event) => {
+            log('❌ Error: ' + event.message);
+        });
     </script>
 </body>
 </html>
